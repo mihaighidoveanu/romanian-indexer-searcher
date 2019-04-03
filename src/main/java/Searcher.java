@@ -1,9 +1,7 @@
 import org.apache.lucene.analysis.Analyzer;
-import org.apache.lucene.analysis.ro.RomanianAnalyzer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.index.DirectoryReader;
 import org.apache.lucene.index.IndexReader;
-import org.apache.lucene.index.Term;
 import org.apache.lucene.queryparser.classic.ParseException;
 import org.apache.lucene.queryparser.classic.QueryParser;
 import org.apache.lucene.search.*;
@@ -17,7 +15,7 @@ public class Searcher {
 
     public static void main(String[] args) throws IOException {
 
-        String queryString = "mare - soare";
+        String queryString = "maşinuţă";
         String queryField = "content";
         String indexPath = "index";
 
@@ -28,12 +26,13 @@ public class Searcher {
         IndexSearcher searcher = new IndexSearcher(reader);
 
         // create a query parser
-        Analyzer analyzer = new RomanianAnalyzer();
+        Analyzer analyzer = Indexer.getAnalyzer();
         QueryParser parser = new QueryParser(queryField, analyzer);
 
         // create a query based on the parsed interrogation
         try{
             Query query = parser.parse(queryString);
+            System.out.println("Original query: " + queryString);
             System.out.println("Searching for: " + query.toString(queryField));
 
             // Execute que query and show the results

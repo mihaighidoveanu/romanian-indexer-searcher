@@ -1,39 +1,61 @@
+import org.apache.lucene.analysis.Analyzer;
+import org.apache.lucene.analysis.core.LowerCaseFilterFactory;
+import org.apache.lucene.analysis.core.StopFilterFactory;
+import org.apache.lucene.analysis.custom.CustomAnalyzer;
+import org.apache.lucene.analysis.miscellaneous.ASCIIFoldingFilterFactory;
 import org.apache.lucene.analysis.ro.RomanianAnalyzer;
+import org.apache.lucene.analysis.snowball.SnowballPorterFilterFactory;
+import org.apache.lucene.analysis.standard.StandardTokenizerFactory;
 import org.apache.lucene.document.*;
 import org.apache.lucene.index.*;
 import org.apache.lucene.search.*;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.FSDirectory;
+import org.apache.tika.parser.AutoDetectParser;
+import org.apache.tika.parser.ParsingReader;
 
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
+import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.nio.file.attribute.BasicFileAttributes;
+import java.util.ArrayList;
 import java.util.Date;
+import java.util.List;
 
 public class Indexer {
+
+    public static Analyzer getAnalyzer() throws IOException {
+        Analyzer analyzer = CustomAnalyzer.builder()
+                .withTokenizer(StandardTokenizerFactory.class)
+                .addTokenFilter(ASCIIFoldingFilterFactory.class)
+                .addTokenFilter(LowerCaseFilterFactory.class)
+                .addTokenFilter(SnowballPorterFilterFactory.class, "language", "Romanian")
+                .addTokenFilter(StopFilterFactory.class, "words","stopwords.txt")
+                .build();
+
+        return analyzer;
+    }
 
     public static void main(String[] args) throws IOException {
 
         Date start = new Date();
 
         String indexPath = "index";
-        String docsPath = "docs";
+        String docsPath = "docs/real";
 
         //open doc directory
         final Path docDir = Paths.get(docsPath);
         if (!Files.isReadable(docDir)) {
-            System.out.println("Document directory '" +docDir.toAbsolutePath()+ "' does not exist or is not readable, please check the path");
+            System.out.println("Document directory '" + docDir.toAbsolutePath()+ "' does not exist or is not readable, please check the path");
             System.exit(1);
         }
 
 
         // Create an index writer
+        // index directory
         Directory index = FSDirectory.open(Paths.get(indexPath));
-        RomanianAnalyzer analyzer = new RomanianAnalyzer();
+        // analyzer
+        Analyzer analyzer = getAnalyzer();
 
         // indexer config
         IndexWriterConfig config = new IndexWriterConfig(analyzer);
@@ -49,7 +71,6 @@ public class Indexer {
 
 
     }
-
 
     static void indexDocs(final IndexWriter writer, Path path) throws IOException {
         if (Files.isDirectory(path)) {
@@ -96,7 +117,10 @@ public class Indexer {
             // If that's not the case searching for special characters will fail.
 //            BufferedReader reader = new BufferedReader(new InputStreamReader(stream, StandardCharsets.UTF_8));
 //            System.out.println(reader.readLine());
-            doc.add(new TextField("content", new BufferedReader(new InputStreamReader(stream, StandardCharsets.UTF_8))));
+
+            Reader reader = new ParsingReader(stream);
+//          Reader reader = new BufferedReader(new InputStreamReader(stream, StandardCharsets.UTF_8));
+            doc.add(new TextField("content", reader));
 
             if (writer.getConfig().getOpenMode() == IndexWriterConfig.OpenMode.CREATE) {
                 // New index, so we just add the document (no old document can be there):
@@ -113,23 +137,4 @@ public class Indexer {
 
     }
 
-    private void residue(){
-        // Add a document to the index
-//        Document document = new Document();
-//        document.add(new TextField("name", "John Doe", Field.Store.YES));
-//        document.add(new TextField("address", "80 Summer Hill", Field.Store.YES));
-//        indexWriter.addDocument(document);
-//
-//        // Add a document to the index
-//        document = new Document();
-//        document.add(new TextField("name", "Jane Doe", Field.Store.YES));
-//        document.add(new TextField("address", "9 Indexer Circle", Field.Store.YES));
-//        indexWriter.addDocument(document);
-//
-//        // Add a document to the index
-//        document = new Document();
-//        document.add(new TextField("name", "John Smith", Field.Store.YES));
-//        document.add(new TextField("address", "9 Dexter Avenue", Field.Store.YES));
-//        indexWriter.addDocument(document);
-    }
 }
