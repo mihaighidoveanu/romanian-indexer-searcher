@@ -10,10 +10,7 @@ import org.apache.lucene.store.FSDirectory;
 
 import java.io.IOException;
 import java.nio.file.Paths;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 public class Searcher {
 
@@ -22,10 +19,7 @@ public class Searcher {
 
     public static void main(String[] args) throws IOException {
 
-        String[] queries = {"filmuleţe", "filme", "maşinuţă","automobil", "munţi", "muntos" , "bărcuţe", "barca",
-                "joc", "jocuri", "filmare", "iaht", "iahturi", "animale", "animal",
-                "planta", "fauna", "flori", "pădure", "pădurilor", "trasee", "traseuri", "natură",
-                "google", "sisteme de operare", "sistem operare"};
+        String[] queries = {"sisteme de operare", "fauna", "flori", "natură", "google"};
 
         String indexPath = "index";
         String queryField = "content";
@@ -42,7 +36,10 @@ public class Searcher {
         Analyzer analyzer = Indexer.getAnalyzer();
         searcher.parser = new QueryParser(queryField, analyzer);
 
+        Date start = new Date();
         Map<Query, List<String>> results = searcher.search(queries);
+        Date end = new Date();
+        long duration = end.getTime() - start.getTime();
         results.forEach( (query, queryResults) -> {
             System.out.println("Results for processed query : " +  query.toString(queryField));
             for(String result : queryResults){
@@ -53,6 +50,7 @@ public class Searcher {
             }
             System.out.println();
         });
+        System.out.println("Queries total time : " + duration + "ms");
     }
 
 

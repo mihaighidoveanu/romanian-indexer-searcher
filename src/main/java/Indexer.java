@@ -25,7 +25,7 @@ public class Indexer {
         Date start = new Date();
 
         String indexPath = "index";
-        String docsPath = "docs/real";
+        String docsPath = "docs/real1";
 
         //open doc directory
         final Path docDir = Paths.get(docsPath);
@@ -100,6 +100,7 @@ public class Indexer {
         return analyzer;
     }
 
+    // build stopwords file with and without diacritics
     static void buildStopwordsFile() throws IOException{
         try(BufferedWriter writer = new BufferedWriter(new FileWriter(Indexer.stopwordsFile)))
         {
@@ -158,15 +159,11 @@ public class Indexer {
             // file should be in UTF-8 encoding
             doc.add(new TextField("content", reader));
 
-            if (writer.getConfig().getOpenMode() == IndexWriterConfig.OpenMode.CREATE) {
-                // New index
-                System.out.println("--- creating index " + file);
-                writer.addDocument(doc);
-            } else {
-                // update the documents matching the same path
-                System.out.println("--- creating or updating index " + file);
-                writer.updateDocument(new Term("path", file.toString()), doc);
-            }
+            // update the documents matching the same path
+            // if it does not exist, create it
+            System.out.println("--- creating or updating index " + file);
+            writer.updateDocument(new Term("path", file.toString()), doc);
+
         }
 
     }
