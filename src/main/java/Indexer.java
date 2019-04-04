@@ -20,12 +20,16 @@ import java.util.Date;
 
 public class Indexer {
 
+    private IndexWriter indexWriter;
+
     public static void main(String[] args) {
+
+        Indexer indexer = new Indexer();
 
         Date start = new Date();
 
         String indexPath = "index";
-        String docsPath = "docs/real1";
+        String docsPath = "docs/real";
 
         //open doc directory
         final Path docDir = Paths.get(docsPath);
@@ -56,10 +60,10 @@ public class Indexer {
             IndexWriterConfig config = new IndexWriterConfig(analyzer);
             config.setOpenMode(IndexWriterConfig.OpenMode.CREATE_OR_APPEND);
 
-            IndexWriter indexWriter = new IndexWriter(index, config);
-            indexDocs(indexWriter, docDir);
+            indexer.indexWriter = new IndexWriter(index, config);
+            indexer.indexDocs(docDir);
 
-            indexWriter.close();
+            indexer.indexWriter.close();
 
         }
         catch (IOException ex){
@@ -78,17 +82,14 @@ public class Indexer {
             analyzer = CustomAnalyzer.builder()
                     .withTokenizer(StandardTokenizerFactory.class)
                     .addTokenFilter(LowerCaseFilterFactory.class)
+                    .addTokenFilter(ASCIIFoldingFilterFactory.class)
                     .addTokenFilter(StopFilterFactory.class, "words", Indexer.stopwordsFile)
                     // remove diacritics before stemming
                     //e.g. if this is done afterwards, functioneaza -> functioneaz, funcţionează -> function
-                    .addTokenFilter(ASCIIFoldingFilterFactory.class)
-                    //   sometimes, the stemmer has to be applied again to get to the root of the word
-                    // e.g. mamei -> mame -> mam
-                    // e.g. mama -> mam
+                    // stemming multiple times solves some problems, but may lead to overstemming
                     .addTokenFilter(SnowballPorterFilterFactory.class, "language", "Romanian")
-                    .addTokenFilter(SnowballPorterFilterFactory.class, "language", "Romanian")
-                    .addTokenFilter(SnowballPorterFilterFactory.class, "language", "Romanian")
-//                    .addTokenFilter(ASCIIFoldingFilterFactory.class)
+//                    .addTokenFilter(SnowballPorterFilterFactory.class, "language", "Romanian")
+//                    .addTokenFilter(SnowballPorterFilterFactory.class, "language", "Romanian")
                     .build();
         }
         catch (IOException ex){
@@ -107,13 +108,10 @@ public class Indexer {
             String stopwordsString = RomanianAnalyzer.getDefaultStopSet().toString();
             String[] stopwords = stopwordsString.substring(1, stopwordsString.length() - 1).split(", ");
             for(String word : stopwords){
-                writer.write(word + "\n");
+                //write stopwords without diacritics
                 String normalized = Normalizer.normalize(word, Normalizer.Form.NFKD);
                 String withoutDiacritics = normalized.replaceAll("[^\\p{ASCII}]", "");
-                // if the string had diacritics in the first place, write the version without diacritics
-                if(withoutDiacritics.equals(word) == false){
-                    writer.write(withoutDiacritics + "\n");
-                }
+                writer.write(withoutDiacritics + "\n");
             }
         }
         catch (IOException ex){
@@ -123,13 +121,13 @@ public class Indexer {
 
 
 
-    static void indexDocs(final IndexWriter writer, Path path) throws IOException {
+     void indexDocs(Path path) throws IOException {
         if (Files.isDirectory(path)) {
             Files.walkFileTree(path, new SimpleFileVisitor<Path>() {
                 @Override
                 public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
                     try {
-                        indexDoc(writer, file, attrs.lastModifiedTime().toMillis());
+                        indexDoc(file, attrs.lastModifiedTime().toMillis());
                     } catch (IOException ignore) {
                         // don't index files that can't be read.
                         System.out.println("WARNING : IOException at reading file " + file + ". Skipping it.");
@@ -138,11 +136,11 @@ public class Indexer {
                 }
             });
         } else {
-            indexDoc(writer, path, Files.getLastModifiedTime(path).toMillis());
+            indexDoc(path, Files.getLastModifiedTime(path).toMillis());
         }
     }
 
-    private static void indexDoc(IndexWriter writer, Path file, long lastModified) throws IOException {
+    private void indexDoc(Path file, long lastModified) throws IOException {
         try (InputStream stream = Files.newInputStream(file)) {
             Document doc = new Document();
 
@@ -162,7 +160,7 @@ public class Indexer {
             // update the documents matching the same path
             // if it does not exist, create it
             System.out.println("--- creating or updating index " + file);
-            writer.updateDocument(new Term("path", file.toString()), doc);
+            this.indexWriter.updateDocument(new Term("path", file.toString()), doc);
 
         }
 
