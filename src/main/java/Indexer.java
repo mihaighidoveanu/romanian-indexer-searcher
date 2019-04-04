@@ -8,35 +8,19 @@ import org.apache.lucene.analysis.snowball.SnowballPorterFilterFactory;
 import org.apache.lucene.analysis.standard.StandardTokenizerFactory;
 import org.apache.lucene.document.*;
 import org.apache.lucene.index.*;
-import org.apache.lucene.search.*;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.FSDirectory;
-import org.apache.tika.parser.AutoDetectParser;
 import org.apache.tika.parser.ParsingReader;
 
 import java.io.*;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.nio.file.attribute.BasicFileAttributes;
-import java.util.ArrayList;
+import java.text.Normalizer;
 import java.util.Date;
-import java.util.List;
 
 public class Indexer {
 
-    public static Analyzer getAnalyzer() throws IOException {
-        Analyzer analyzer = CustomAnalyzer.builder()
-                .withTokenizer(StandardTokenizerFactory.class)
-                .addTokenFilter(ASCIIFoldingFilterFactory.class)
-                .addTokenFilter(LowerCaseFilterFactory.class)
-                .addTokenFilter(SnowballPorterFilterFactory.class, "language", "Romanian")
-                .addTokenFilter(StopFilterFactory.class, "words","stopwords.txt")
-                .build();
-
-        return analyzer;
-    }
-
-    public static void main(String[] args) throws IOException {
+    public static void main(String[] args) {
 
         Date start = new Date();
 
@@ -46,31 +30,97 @@ public class Indexer {
         //open doc directory
         final Path docDir = Paths.get(docsPath);
         if (!Files.isReadable(docDir)) {
-            System.out.println("Document directory '" + docDir.toAbsolutePath()+ "' does not exist or is not readable, please check the path");
+            System.out.println("ERROR : Document directory '" + docDir.toAbsolutePath()+ "' does not exist or is not readable, please check the path");
             System.exit(1);
         }
 
+        try{
+            // Create an index writer
+            // index directory
+            Directory index = FSDirectory.open(Paths.get(indexPath));
+            // analyzer
+            Analyzer analyzer = getAnalyzer();
 
-        // Create an index writer
-        // index directory
-        Directory index = FSDirectory.open(Paths.get(indexPath));
-        // analyzer
-        Analyzer analyzer = getAnalyzer();
+            try{
+                System.out.println("--- building stopwords file at " + Indexer.stopwordsFile);
+                System.out.println("IMPORTANT : Remember to add the stopwords file in the classpath when running the searcher");
+                buildStopwordsFile();
+            }
+            catch (IOException ex){
+                System.out.println("WARNING : IOException at building stopwords file at " + Indexer.stopwordsFile + ".");
+                System.out.println("WARNING : Can not build custom analyzer without stopwords file. ");
+                System.out.println("--- defaulting to RomanianAnalyzer instead. Diacritics will not be treated");
+            }
 
-        // indexer config
-        IndexWriterConfig config = new IndexWriterConfig(analyzer);
-        config.setOpenMode(IndexWriterConfig.OpenMode.CREATE);
+            // indexer config
+            IndexWriterConfig config = new IndexWriterConfig(analyzer);
+            config.setOpenMode(IndexWriterConfig.OpenMode.CREATE_OR_APPEND);
 
-        IndexWriter indexWriter = new IndexWriter(index, config);
-        indexDocs(indexWriter, docDir);
+            IndexWriter indexWriter = new IndexWriter(index, config);
+            indexDocs(indexWriter, docDir);
 
-        indexWriter.close();
+            indexWriter.close();
+
+        }
+        catch (IOException ex){
+            System.out.println(ex);
+        }
 
         Date end = new Date();
-        System.out.println("Indexer time : " + (end.getTime() - start.getTime()) + " total milliseconds");
-
-
+        System.out.println("--- total time : " + (end.getTime() - start.getTime()) + " total milliseconds");
     }
+
+    static String stopwordsFile = "stopwords.txt";
+
+    static Analyzer getAnalyzer()  {
+        Analyzer analyzer;
+        try{
+            analyzer = CustomAnalyzer.builder()
+                    .withTokenizer(StandardTokenizerFactory.class)
+                    .addTokenFilter(LowerCaseFilterFactory.class)
+                    .addTokenFilter(StopFilterFactory.class, "words", Indexer.stopwordsFile)
+                    // remove diacritics before stemming
+                    //e.g. if this is done afterwards, functioneaza -> functioneaz, funcţionează -> function
+                    .addTokenFilter(ASCIIFoldingFilterFactory.class)
+                    //   sometimes, the stemmer has to be applied again to get to the root of the word
+                    // e.g. mamei -> mame -> mam
+                    // e.g. mama -> mam
+                    .addTokenFilter(SnowballPorterFilterFactory.class, "language", "Romanian")
+                    .addTokenFilter(SnowballPorterFilterFactory.class, "language", "Romanian")
+                    .addTokenFilter(SnowballPorterFilterFactory.class, "language", "Romanian")
+//                    .addTokenFilter(ASCIIFoldingFilterFactory.class)
+                    .build();
+        }
+        catch (IOException ex){
+            System.out.println("WARNING : IOException at building custom analyzer.");
+            System.out.println("--- defaulting to RomanianAnalyzer instead. Diacritics will not be treated");
+            analyzer = new RomanianAnalyzer();
+        }
+
+        return analyzer;
+    }
+
+    static void buildStopwordsFile() throws IOException{
+        try(BufferedWriter writer = new BufferedWriter(new FileWriter(Indexer.stopwordsFile)))
+        {
+            String stopwordsString = RomanianAnalyzer.getDefaultStopSet().toString();
+            String[] stopwords = stopwordsString.substring(1, stopwordsString.length() - 1).split(", ");
+            for(String word : stopwords){
+                writer.write(word + "\n");
+                String normalized = Normalizer.normalize(word, Normalizer.Form.NFKD);
+                String withoutDiacritics = normalized.replaceAll("[^\\p{ASCII}]", "");
+                // if the string had diacritics in the first place, write the version without diacritics
+                if(withoutDiacritics.equals(word) == false){
+                    writer.write(withoutDiacritics + "\n");
+                }
+            }
+        }
+        catch (IOException ex){
+            throw new IOException(ex.getMessage());
+        }
+    }
+
+
 
     static void indexDocs(final IndexWriter writer, Path path) throws IOException {
         if (Files.isDirectory(path)) {
@@ -81,6 +131,7 @@ public class Indexer {
                         indexDoc(writer, file, attrs.lastModifiedTime().toMillis());
                     } catch (IOException ignore) {
                         // don't index files that can't be read.
+                        System.out.println("WARNING : IOException at reading file " + file + ". Skipping it.");
                     }
                     return FileVisitResult.CONTINUE;
                 }
@@ -92,45 +143,28 @@ public class Indexer {
 
     private static void indexDoc(IndexWriter writer, Path file, long lastModified) throws IOException {
         try (InputStream stream = Files.newInputStream(file)) {
-            // make a new, empty document
             Document doc = new Document();
 
-            // Add the path of the file as a field named "path".  Use a
-            // field that is indexed (i.e. searchable), but don't tokenize
-            // the field into separate words and don't index term frequency
-            // or positional information:
+            // add path as a field that is searchable (indexed)
+            // but don't tokenize it, index term frequency or positional information
             Field pathField = new StringField("path", file.toString(), Field.Store.YES);
             doc.add(pathField);
 
-            // Add the last modified date of the file a field named "modified".
-            // Use a LongPoint that is indexed (i.e. efficiently filterable with
-            // PointRangeQuery).  This indexes to milli-second resolution, which
-            // is often too fine.  You could instead create a number based on
-            // year/month/day/hour/minutes/seconds, down the resolution you require.
-            // For example the long value 2011021714 would mean
-            // February 17, 2011, 2-3 PM.
+            // use a LongPoint that is indexed ( fastly filterable with PointRangeQuery)
             doc.add(new LongPoint("modified", lastModified));
 
-            // Add the contents of the file to a field named "contents".  Specify a Reader,
-            // so that the text of the file is tokenized and indexed, but not stored.
-            // Note that FileReader expects the file to be in UTF-8 encoding.
-            // If that's not the case searching for special characters will fail.
-//            BufferedReader reader = new BufferedReader(new InputStreamReader(stream, StandardCharsets.UTF_8));
-//            System.out.println(reader.readLine());
-
             Reader reader = new ParsingReader(stream);
-//          Reader reader = new BufferedReader(new InputStreamReader(stream, StandardCharsets.UTF_8));
+            // passing a reader as a parameter tokenizes and indexes the text, but doesn't store it
+            // file should be in UTF-8 encoding
             doc.add(new TextField("content", reader));
 
             if (writer.getConfig().getOpenMode() == IndexWriterConfig.OpenMode.CREATE) {
-                // New index, so we just add the document (no old document can be there):
-                System.out.println("adding " + file);
+                // New index
+                System.out.println("--- creating index " + file);
                 writer.addDocument(doc);
             } else {
-                // Existing index (an old copy of this document may have been indexed) so
-                // we use updateDocument instead to replace the old one matching the exact
-                // path, if present:
-                System.out.println("updating " + file);
+                // update the documents matching the same path
+                System.out.println("--- creating or updating index " + file);
                 writer.updateDocument(new Term("path", file.toString()), doc);
             }
         }
