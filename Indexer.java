@@ -1,3 +1,4 @@
+
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.core.LowerCaseFilterFactory;
 import org.apache.lucene.analysis.core.StopFilterFactory;
@@ -26,7 +27,7 @@ public class Indexer {
 
 
         String indexPath = "index";
-        String docsPath = "docs/real";
+        String docsPath = "docs";
 
         Indexer indexer = new Indexer();
         Date start = new Date();
@@ -40,12 +41,7 @@ public class Indexer {
         }
 
         try{
-            // Create an index writer
-            // index directory
-            Directory index = FSDirectory.open(Paths.get(indexPath));
-            // analyzer
-            Analyzer analyzer = getAnalyzer();
-
+            // build stopwords file
             try{
                 System.out.println("--- building stopwords file at " + Indexer.stopwordsFile);
                 System.out.println("IMPORTANT : Remember to add the stopwords file in the classpath when running the searcher");
@@ -56,6 +52,13 @@ public class Indexer {
                 System.out.println("WARNING : Can not build custom analyzer without stopwords file. ");
                 System.out.println("--- defaulting to RomanianAnalyzer instead. Diacritics will not be treated");
             }
+
+            // Create an index writer
+            // index directory
+            Directory index = FSDirectory.open(Paths.get(indexPath));
+            // analyzer
+            Analyzer analyzer = getAnalyzer();
+
 
             // indexer config
             IndexWriterConfig config = new IndexWriterConfig(analyzer);
@@ -91,7 +94,6 @@ public class Indexer {
                     // stemming multiple times solves some problems, but may lead to overstemming
                     // we prefer overstemmng to understemming in this search use case
                     // we prefer retrieveing more documents including less relevant ones than missing important documents
-                    .addTokenFilter(SnowballPorterFilterFactory.class, "language", "Romanian")
                     .addTokenFilter(SnowballPorterFilterFactory.class, "language", "Romanian")
                     .addTokenFilter(SnowballPorterFilterFactory.class, "language", "Romanian")
                     .build();
